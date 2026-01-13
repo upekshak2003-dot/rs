@@ -26,6 +26,7 @@ export default function AddAdvanceModal({
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerAddress, setCustomerAddress] = useState('')
+  const [customerId, setCustomerId] = useState('')
   const [sellingPrice, setSellingPrice] = useState('')
   const [todayAmount, setTodayAmount] = useState('')
   const [loading, setLoading] = useState(false)
@@ -62,6 +63,7 @@ export default function AddAdvanceModal({
         setCustomerName(advance.customer_name)
         setCustomerPhone(advance.customer_phone || '')
         setCustomerAddress(advance.customer_address || '')
+        setCustomerId((advance as any).customer_id || '')
         setSellingPrice(advance.expected_sell_price_lkr.toString())
         setIsFirstAdvance(false)
       } else {
@@ -69,6 +71,7 @@ export default function AddAdvanceModal({
         setCustomerName('')
         setCustomerPhone('')
         setCustomerAddress('')
+        setCustomerId('')
         setSellingPrice('')
         setExistingAdvance(null)
       }
@@ -79,6 +82,7 @@ export default function AddAdvanceModal({
         setCustomerName('')
         setCustomerPhone('')
         setCustomerAddress('')
+        setCustomerId('')
         setSellingPrice('')
         setExistingAdvance(null)
       } else {
@@ -143,6 +147,7 @@ export default function AddAdvanceModal({
             customer_name: customerName.trim(),
             customer_phone: customerPhone?.trim() || null,
             customer_address: customerAddress?.trim() || null,
+            customer_id: customerId?.trim() || null,
             expected_sell_price_lkr: parseFloat(sellingPrice),
             amount_lkr: parseFloat(todayAmount) || 0, // Add amount_lkr if required by schema
           })
@@ -270,6 +275,32 @@ export default function AddAdvanceModal({
       pdf.text(`Date: ${receiptDate}`, 20, 65)
 
       let currentY = 75
+
+      // Customer Details (below date)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(10)
+      if (customerName) {
+        pdf.text(`Customer Name: ${customerName}`, 20, currentY)
+        currentY += 6
+      }
+      if (customerPhone) {
+        pdf.text(`Phone: ${customerPhone}`, 20, currentY)
+        currentY += 6
+      }
+      if (customerAddress) {
+        pdf.text(`Address: ${customerAddress}`, 20, currentY)
+        currentY += 6
+      }
+      if (customerId) {
+        pdf.text(`ID: ${customerId}`, 20, currentY)
+        currentY += 6
+      }
+      
+      // Draw a line after customer details
+      currentY += 4
+      pdf.setDrawColor(0, 0, 0)
+      pdf.line(20, currentY, 190, currentY)
+      currentY += 8
 
       // Description heading (centered)
       pdf.setFont('helvetica', 'bold')
@@ -459,6 +490,16 @@ export default function AddAdvanceModal({
                       />
                     </div>
                     <div style={{ position: 'relative', zIndex: 10 }}>
+                      <label className="label">Customer ID</label>
+                      <input
+                        type="text"
+                        value={customerId}
+                        onChange={(e) => setCustomerId(e.target.value)}
+                        className="input-field"
+                        style={{ pointerEvents: 'auto', zIndex: 10, position: 'relative', cursor: 'text' }}
+                      />
+                    </div>
+                    <div style={{ position: 'relative', zIndex: 10 }}>
                       <label className="label">Selling Price (LKR) *</label>
                       <input
                         type="number"
@@ -477,6 +518,7 @@ export default function AddAdvanceModal({
                     <p><strong>Name:</strong> {customerName}</p>
                     <p><strong>Phone:</strong> {customerPhone || 'N/A'}</p>
                     <p><strong>Address:</strong> {customerAddress || 'N/A'}</p>
+                    <p><strong>ID:</strong> {customerId || 'N/A'}</p>
                     <p className="mt-2"><strong>Selling Price:</strong> {formatCurrency(parseFloat(sellingPrice))}</p>
                   </div>
                 )}
