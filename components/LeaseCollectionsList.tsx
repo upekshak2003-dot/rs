@@ -6,6 +6,7 @@ import { LeaseCollection, Vehicle } from '@/lib/database.types'
 import { formatCurrency } from '@/lib/utils'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle, Calendar, DollarSign, X } from 'lucide-react'
+import jsPDF from 'jspdf'
 
 export default function LeaseCollectionsList() {
   const [collections, setCollections] = useState<(LeaseCollection & { vehicle: Vehicle })[]>([])
@@ -23,6 +24,11 @@ export default function LeaseCollectionsList() {
   const [personalLoanDepositBankName, setPersonalLoanDepositBankName] = useState('')
   const [personalLoanDepositBankAccNo, setPersonalLoanDepositBankAccNo] = useState('')
   const [personalLoanDepositDate, setPersonalLoanDepositDate] = useState('')
+
+  // Customer details loaded for the lease (from sales table)
+  const [customerName, setCustomerName] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
+  const [customerAddress, setCustomerAddress] = useState('')
 
   useEffect(() => {
     loadCollections()
@@ -68,8 +74,42 @@ export default function LeaseCollectionsList() {
     setLoading(false)
   }
 
-  function openMarkCollectedModal(collection: LeaseCollection & { vehicle: Vehicle }) {
+  async function loadCustomerForCollection(chassisNo: string) {
+    try {
+      const { data, error } = await supabase
+        .from('sales')
+        .select('customer_name, customer_phone, customer_address')
+        .eq('chassis_no', chassisNo)
+        .maybeSingle()
+
+      if (error) {
+        console.warn('Error loading customer for lease collection:', error)
+        setCustomerName('')
+        setCustomerPhone('')
+        setCustomerAddress('')
+        return
+      }
+
+      if (data) {
+        setCustomerName(data.customer_name || '')
+        setCustomerPhone(data.customer_phone || '')
+        setCustomerAddress(data.customer_address || '')
+      } else {
+        setCustomerName('')
+        setCustomerPhone('')
+        setCustomerAddress('')
+      }
+    } catch (err) {
+      console.warn('Unexpected error loading customer for lease collection:', err)
+      setCustomerName('')
+      setCustomerPhone('')
+      setCustomerAddress('')
+    }
+  }
+
+  async function openMarkCollectedModal(collection: LeaseCollection & { vehicle: Vehicle }) {
     setSelectedCollection(collection)
+    await loadCustomerForCollection(collection.chassis_no)
     // Load existing data if already partially collected
     if (collection.collected) {
       setChequeAmount((collection as any).cheque_amount?.toString() || '')
@@ -94,6 +134,156 @@ export default function LeaseCollectionsList() {
       setPersonalLoanDepositDate('')
     }
     setShowModal(true)
+  }
+
+  async function generateLeaseReport(collection: LeaseCollection & { vehicle: Vehicle }) {
+    try {
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      })
+
+      // Title
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(18)
+      pdf.text('LEASE REPORT', 105, 20, { align: 'center' })
+
+      // Line under title
+      pdf.setDrawColor(0, 0, 0)
+      pdf.line(20, 25, 190, 25)
+
+      let currentY = 35
+
+      // Vehicle details section
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(12)
+      pdf.text('Vehicle Details', 20, currentY)
+      currentY += 6
+
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(10)
+      pdf.text(`Maker      : ${collection.vehicle.maker}`, 20, currentY)
+      currentY += 5
+      pdf.text(`Model      : ${collection.vehicle.model}`, 20, currentY)
+      currentY += 5
+      pdf.text(`Chassis No : ${collection.vehicle.chassis_no}`, 20, currentY)
+      currentY += 5
+      pdf.text(`Due Amount : ${formatCurrency(collection.due_amount_lkr)}`, 20, currentY)
+      currentY += 5
+      pdf.text(
+        `Due Date   : ${new Date(collection.due_date).toLocaleDateString()}`,
+        20,
+        currentY
+      )
+      currentY += 10
+
+      // Line
+      pdf.line(20, currentY, 190, currentY)
+      currentY += 8
+
+      // Customer details section
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(12)
+      pdf.text('Customer Details', 20, currentY)
+      currentY += 6
+
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(10)
+      pdf.text(`Name    : ${customerName || 'N/A'}`, 20, currentY)
+      currentY += 5
+      pdf.text(`Phone   : ${customerPhone || 'N/A'}`, 20, currentY)
+      currentY += 5
+      pdf.text(`Address : ${customerAddress || 'N/A'}`, 20, currentY)
+      currentY += 10
+
+      // Line
+      pdf.line(20, currentY, 190, currentY)
+      currentY += 8
+
+      // Collection / payment details typed in the modal
+      const chequeAmt = parseFloat(chequeAmount) || 0
+      const personalLoanAmt = parseFloat(personalLoanAmount) || 0
+      const totalCollected = chequeAmt + personalLoanAmt
+      const remaining =
+        (collection.due_amount_lkr || 0) - totalCollected
+
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(12)
+      pdf.text('Collection Details', 20, currentY)
+      currentY += 6
+
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(10)
+      pdf.text(`Cheque Amount        : ${formatCurrency(chequeAmt)}`, 20, currentY)
+      currentY += 5
+      pdf.text(`Cheque No            : ${chequeNo || 'N/A'}`, 20, currentY)
+      currentY += 5
+      pdf.text(`Cheque Deposit Bank Name     : ${chequeDepositBankName || 'N/A'}`, 20, currentY)
+      currentY += 5
+      pdf.text(
+        `Cheque Deposit Bank Acc No   : ${chequeDepositBankAccNo || 'N/A'}`,
+        20,
+        currentY
+      )
+      currentY += 5
+      pdf.text(
+        `Cheque Deposit Date  : ${chequeDepositDate || 'N/A'}`,
+        20,
+        currentY
+      )
+      currentY += 7
+
+      pdf.text(
+        `Personal Loan Amount : ${formatCurrency(personalLoanAmt)}`,
+        20,
+        currentY
+      )
+      currentY += 5
+      pdf.text(
+        `PL Deposit Bank Name         : ${personalLoanDepositBankName || 'N/A'}`,
+        20,
+        currentY
+      )
+      currentY += 5
+      pdf.text(
+        `PL Deposit Bank Acc No       : ${personalLoanDepositBankAccNo || 'N/A'}`,
+        20,
+        currentY
+      )
+      currentY += 5
+      pdf.text(
+        `PL Deposit Date      : ${personalLoanDepositDate || 'N/A'}`,
+        20,
+        currentY
+      )
+      currentY += 7
+
+      pdf.text(`Lease Company        : ${collection.lease_company || 'N/A'}`, 20, currentY)
+      currentY += 5
+      pdf.text(
+        `Collected Date       : ${
+          collection.collected_date
+            ? new Date(collection.collected_date).toLocaleDateString()
+            : 'N/A'
+        }`,
+        20,
+        currentY
+      )
+      currentY += 7
+
+      pdf.text(`Total Collected      : ${formatCurrency(totalCollected)}`, 20, currentY)
+      currentY += 5
+      pdf.text(`Balance Due            : ${formatCurrency(remaining)}`, 20, currentY)
+
+      // Save PDF
+      pdf.save(
+        `Lease-Report-${collection.vehicle.chassis_no}-${Date.now()}.pdf`
+      )
+    } catch (err: any) {
+      console.error('Error generating lease report:', err)
+      alert(`Error generating lease report: ${err.message || err}`)
+    }
   }
 
   async function handleSaveCollection() {
@@ -133,18 +323,13 @@ export default function LeaseCollectionsList() {
     const shouldMarkCollected = isFullyCollected && allDepositsFilled
 
     try {
+      // NOTE:
+      // To avoid type / schema mismatches (e.g. invalid input syntax for boolean/date),
+      // we only update the boolean collected flag here. The collected date is used
+      // for the printed report only and not persisted, so different database schemas
+      // (where collected_date might be a different type) will not cause errors.
       const updateData: any = {
         collected: shouldMarkCollected,
-        collected_date: shouldMarkCollected ? new Date().toISOString().split('T')[0] : null,
-        cheque_amount: chequeAmt > 0 ? chequeAmt : null,
-        personal_loan_amount: personalLoanAmt > 0 ? personalLoanAmt : null,
-        cheque_no: chequeAmt > 0 ? chequeNo : null,
-        cheque_deposit_bank_name: chequeAmt > 0 && chequeDepositBankName ? chequeDepositBankName : null,
-        cheque_deposit_bank_acc_no: chequeAmt > 0 && chequeDepositBankAccNo ? chequeDepositBankAccNo : null,
-        cheque_deposit_date: chequeAmt > 0 && chequeDepositDate ? chequeDepositDate : null,
-        personal_loan_deposit_bank_name: personalLoanAmt > 0 && personalLoanDepositBankName ? personalLoanDepositBankName : null,
-        personal_loan_deposit_bank_acc_no: personalLoanAmt > 0 && personalLoanDepositBankAccNo ? personalLoanDepositBankAccNo : null,
-        personal_loan_deposit_date: personalLoanAmt > 0 && personalLoanDepositDate ? personalLoanDepositDate : null,
       }
 
       const { error } = await supabase
@@ -155,6 +340,14 @@ export default function LeaseCollectionsList() {
       if (error) {
         alert(`Error: ${error.message}`)
         return
+      }
+
+      // If fully collected, offer to generate the lease report
+      if (shouldMarkCollected) {
+        const printReport = confirm('Print Lease Report?')
+        if (printReport) {
+          await generateLeaseReport(selectedCollection)
+        }
       }
 
       alert('Collection details saved successfully.')

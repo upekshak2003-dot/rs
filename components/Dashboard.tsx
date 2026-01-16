@@ -159,27 +159,13 @@ export default function Dashboard() {
             color=""
             delay={0.1}
           />
-          <StatCard
-            title="Total Advance Held"
-            value={formatCurrency(stats.totalAdvanceMoney)}
-            icon={DollarSign}
-            color=""
-            delay={0.2}
-          />
-          <StatCard
-            title="Lease"
-            value={formatCurrency(stats.leaseMoneyToCollect)}
-            icon={Receipt}
-            color=""
-            delay={0.3}
-          />
           {isAdmin(user) && (
             <StatCard
               title="Monthly Profit"
               value={formatCurrency(stats.monthlyProfit)}
               icon={TrendingUp}
               color=""
-              delay={0.4}
+              delay={0.2}
             />
           )}
         </div>

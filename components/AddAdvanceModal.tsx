@@ -280,7 +280,7 @@ export default function AddAdvanceModal({
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(10)
       if (customerName) {
-        pdf.text(`Customer Name: ${customerName}`, 20, currentY)
+        pdf.text(`Name: ${customerName}`, 20, currentY)
         currentY += 6
       }
       if (customerPhone) {
@@ -405,15 +405,22 @@ export default function AddAdvanceModal({
       const pageHeight = pdf.internal.pageSize.getHeight()
       currentY = pageHeight - 50 // Moved higher (reduced gap)
 
-      // Left corner: Signature section (with extra dots)
+      // Left corner: Authorized Signature section (with extra dots)
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(10)
       pdf.text('..............................', 20, currentY) // Extra dots for signature
+      
+      // Right corner: Customer Signature section (with extra dots)
+      const rightSignatureX = 160 // Right side alignment
+      pdf.text('..............................', rightSignatureX, currentY) // Extra dots for signature
       currentY += 8
       
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(10)
       pdf.text('Authorized Signature', 20, currentY)
+      
+      // Right corner: Customer Signature label
+      pdf.text('Customer Signature', rightSignatureX, currentY)
 
       // Save PDF
       pdf.save(`Advance-Receipt-${vehicle.chassis_no}-${Date.now()}.pdf`)

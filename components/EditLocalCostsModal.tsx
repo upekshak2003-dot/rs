@@ -22,6 +22,8 @@ export default function EditLocalCostsModal({
   onSave,
   isAdmin = true,
 }: EditLocalCostsModalProps) {
+  const [lcCommission, setLcCommission] = useState('')
+  const [lcCommissionAutoCalculated, setLcCommissionAutoCalculated] = useState(true)
   const [tax, setTax] = useState(vehicle.tax_lkr?.toString() || '')
   const [clearance, setClearance] = useState(vehicle.clearance_lkr?.toString() || '')
   const [transport, setTransport] = useState(vehicle.transport_lkr?.toString() || '')
@@ -35,20 +37,52 @@ export default function EditLocalCostsModal({
 
   const base = vehicle.japan_total_lkr || 0
 
+  // Calculate invoice LKR value
+  const invoiceLkrValue = (vehicle.invoice_amount_jpy || 0) * (vehicle.invoice_jpy_to_lkr_rate || 0)
+
+  // Auto-calculate LC Commission on mount and when invoice values change
+  useEffect(() => {
+    if (lcCommissionAutoCalculated) {
+      const calculated = invoiceLkrValue * 0.0035
+      setLcCommission(calculated > 0 ? calculated.toFixed(2) : '')
+    }
+  }, [invoiceLkrValue, lcCommissionAutoCalculated])
+
+  // Load existing LC Commission from local_extra1 if it's labeled as LC Commission
+  useEffect(() => {
+    if (vehicle.local_extra1_label === 'LC Commission' || vehicle.local_extra1_label === '') {
+      if (vehicle.local_extra1_lkr) {
+        setLcCommission(vehicle.local_extra1_lkr.toString())
+        setLcCommissionAutoCalculated(false)
+      }
+    }
+  }, [vehicle.local_extra1_label, vehicle.local_extra1_lkr])
+
   function calculateRunningTotal(field: string): number {
     let total = base
-    if (field === 'tax') {
-      total += parseFloat(tax) || 0
+    const lcComm = parseFloat(lcCommission) || 0
+    const taxVal = parseFloat(tax) || 0
+    const clearanceVal = parseFloat(clearance) || 0
+    const transportVal = parseFloat(transport) || 0
+    // Only include extra1 if it's NOT being used for LC Commission
+    const extra1Val = (extra1Label && extra1Label !== 'LC Commission') ? (parseFloat(extra1Amount) || 0) : 0
+    const extra2Val = parseFloat(extra2Amount) || 0
+    const extra3Val = parseFloat(extra3Amount) || 0
+
+    if (field === 'lcCommission') {
+      total += lcComm
+    } else if (field === 'tax') {
+      total += lcComm + taxVal
     } else if (field === 'clearance') {
-      total += (parseFloat(tax) || 0) + (parseFloat(clearance) || 0)
+      total += lcComm + taxVal + clearanceVal
     } else if (field === 'transport') {
-      total += (parseFloat(tax) || 0) + (parseFloat(clearance) || 0) + (parseFloat(transport) || 0)
+      total += lcComm + taxVal + clearanceVal + transportVal
     } else if (field === 'extra1') {
-      total += (parseFloat(tax) || 0) + (parseFloat(clearance) || 0) + (parseFloat(transport) || 0) + (parseFloat(extra1Amount) || 0)
+      total += lcComm + taxVal + clearanceVal + transportVal + extra1Val
     } else if (field === 'extra2') {
-      total += (parseFloat(tax) || 0) + (parseFloat(clearance) || 0) + (parseFloat(transport) || 0) + (parseFloat(extra1Amount) || 0) + (parseFloat(extra2Amount) || 0)
+      total += lcComm + taxVal + clearanceVal + transportVal + extra1Val + extra2Val
     } else if (field === 'extra3') {
-      total += (parseFloat(tax) || 0) + (parseFloat(clearance) || 0) + (parseFloat(transport) || 0) + (parseFloat(extra1Amount) || 0) + (parseFloat(extra2Amount) || 0) + (parseFloat(extra3Amount) || 0)
+      total += lcComm + taxVal + clearanceVal + transportVal + extra1Val + extra2Val + extra3Val
     }
     return total
   }
@@ -56,15 +90,26 @@ export default function EditLocalCostsModal({
   async function handleSave() {
     setLoading(true)
     try {
+      // Calculate local total - don't double-count LC Commission if it's in extra1
+      const lcCommVal = parseFloat(lcCommission) || 0
+      const extra1Val = (extra1Label && extra1Label !== 'LC Commission') ? (parseFloat(extra1Amount) || 0) : 0
+      
       const localTotal = 
+        lcCommVal +
         (parseFloat(tax) || 0) +
         (parseFloat(clearance) || 0) +
         (parseFloat(transport) || 0) +
-        (parseFloat(extra1Amount) || 0) +
+        extra1Val +
         (parseFloat(extra2Amount) || 0) +
         (parseFloat(extra3Amount) || 0)
 
       const finalTotal = base + localTotal
+
+      // Save LC Commission to local_extra1 if it's empty or already labeled as LC Commission
+      // Check original vehicle value, not state (in case user hasn't changed it)
+      const originalExtra1Label = vehicle.local_extra1_label || ''
+      const shouldSaveLcCommission = !originalExtra1Label || originalExtra1Label === 'LC Commission'
+      const lcCommValue = parseFloat(lcCommission) || 0
 
       const { error } = await supabase
         .from('vehicles')
@@ -72,8 +117,8 @@ export default function EditLocalCostsModal({
           tax_lkr: parseFloat(tax) || null,
           clearance_lkr: parseFloat(clearance) || null,
           transport_lkr: parseFloat(transport) || null,
-          local_extra1_label: extra1Label || null,
-          local_extra1_lkr: parseFloat(extra1Amount) || null,
+          local_extra1_label: shouldSaveLcCommission ? 'LC Commission' : (extra1Label || null),
+          local_extra1_lkr: shouldSaveLcCommission ? (lcCommValue > 0 ? lcCommValue : null) : (parseFloat(extra1Amount) || null),
           local_extra2_label: extra2Label || null,
           local_extra2_lkr: parseFloat(extra2Amount) || null,
           local_extra3_label: extra3Label || null,
@@ -130,6 +175,38 @@ export default function EditLocalCostsModal({
                 )}
 
                 <div>
+                  <label className="label">LC Commission (LKR)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={lcCommission}
+                    onChange={(e) => {
+                      setLcCommission(e.target.value)
+                      setLcCommissionAutoCalculated(false)
+                    }}
+                    onFocus={() => {
+                      // Allow manual editing
+                      setLcCommissionAutoCalculated(false)
+                    }}
+                    className="input-field"
+                    placeholder="Auto-calculated: Invoice LKR × 0.0035"
+                  />
+                  {isAdmin && (
+                    <div className="mt-2 text-sm text-slate-600">
+                      <span className="font-semibold">TOTAL + LC Commission = </span>
+                      <span className="text-lg font-bold text-blue-700">
+                        {formatCurrency(calculateRunningTotal('lcCommission'))}
+                      </span>
+                    </div>
+                  )}
+                  {lcCommissionAutoCalculated && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Auto-calculated: {formatCurrency(invoiceLkrValue)} × 0.0035 = {formatCurrency(invoiceLkrValue * 0.0035)}
+                    </p>
+                  )}
+                </div>
+
+                <div>
                   <label className="label">Tax (LKR)</label>
                   <input
                     type="number"
@@ -141,7 +218,7 @@ export default function EditLocalCostsModal({
                   />
                   {isAdmin && (
                     <div className="mt-2 text-sm text-slate-600">
-                      <span className="font-semibold">TOTAL = </span>
+                      <span className="font-semibold">TOTAL + LC Commission + Tax = </span>
                       <span className="text-lg font-bold text-blue-700">
                         {formatCurrency(calculateRunningTotal('tax'))}
                       </span>
@@ -189,37 +266,40 @@ export default function EditLocalCostsModal({
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="label">Extra Cost 1 - Name</label>
-                    <input
-                      type="text"
-                      value={extra1Label}
-                      onChange={(e) => setExtra1Label(e.target.value)}
-                      className="input-field"
-                      placeholder="Custom name"
-                    />
+                {/* Only show Extra Cost 1 if it's not being used for LC Commission */}
+                {extra1Label && extra1Label !== 'LC Commission' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="label">Extra Cost 1 - Name</label>
+                      <input
+                        type="text"
+                        value={extra1Label}
+                        onChange={(e) => setExtra1Label(e.target.value)}
+                        className="input-field"
+                        placeholder="Custom name"
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Extra Cost 1 - Amount (LKR)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={extra1Amount}
+                        onChange={(e) => setExtra1Amount(e.target.value)}
+                        className="input-field"
+                        placeholder="Enter amount"
+                      />
+                      {isAdmin && (
+                        <div className="mt-2 text-sm text-slate-600">
+                          <span className="font-semibold">TOTAL = </span>
+                          <span className="text-lg font-bold text-blue-700">
+                            {formatCurrency(calculateRunningTotal('extra1'))}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <label className="label">Extra Cost 1 - Amount (LKR)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={extra1Amount}
-                      onChange={(e) => setExtra1Amount(e.target.value)}
-                      className="input-field"
-                      placeholder="Enter amount"
-                    />
-                    {isAdmin && (
-                      <div className="mt-2 text-sm text-slate-600">
-                        <span className="font-semibold">TOTAL = </span>
-                        <span className="text-lg font-bold text-blue-700">
-                          {formatCurrency(calculateRunningTotal('extra1'))}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>

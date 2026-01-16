@@ -624,24 +624,29 @@ export default function MarkSoldModal({
       pdf.setFontSize(10)
       pdf.text(customerName || 'N/A', nameStartX, currentY)
       currentY += 8
-      // Address below at same X position as start of name
-      // Format address: 2 comma-separated parts in one line
-      const customerAddressParts = customerAddress ? customerAddress.split(',').map(l => l.trim()).filter(l => l) : []
-      if (customerAddressParts.length > 0) {
-        if (customerAddressParts.length <= 2) {
-          // 1-2 parts: put all on one line
-          pdf.text(customerAddressParts.join(', '), nameStartX, currentY)
-          currentY += 6
-        } else {
-          // 3+ parts: split into two lines (first line: first 2 parts, second line: rest)
-          const firstLine = customerAddressParts.slice(0, 2).join(', ')
-          const secondLine = customerAddressParts.slice(2).join(', ')
-          pdf.text(firstLine, nameStartX, currentY)
-          currentY += 6
-          pdf.text(secondLine, nameStartX, currentY)
+      // Address below at same X position as start of name - print as one line
+      if (customerAddress) {
+        pdf.text(customerAddress, nameStartX, currentY)
+        currentY += 6
+      }
+      
+      // Load customer ID from advances table if available
+      let customerIdFromAdvance = ''
+      try {
+        const { data: advanceData } = await supabase
+          .from('advances')
+          .select('customer_id')
+          .eq('chassis_no', vehicle.chassis_no)
+          .maybeSingle()
+        if (advanceData && (advanceData as any).customer_id) {
+          customerIdFromAdvance = (advanceData as any).customer_id
+          pdf.text(`ID: ${customerIdFromAdvance}`, nameStartX, currentY)
           currentY += 6
         }
+      } catch (err) {
+        // Ignore errors loading customer ID
       }
+      
       currentY += 3
 
       // Line separator

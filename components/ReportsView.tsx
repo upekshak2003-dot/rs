@@ -7,8 +7,9 @@ import { isAdmin } from '@/lib/auth'
 import { Sale, AdvancePayment, LeaseCollection } from '@/lib/database.types'
 import { formatCurrency } from '@/lib/utils'
 import { motion } from 'framer-motion'
-import { TrendingUp, DollarSign, Receipt, Calendar } from 'lucide-react'
+import { TrendingUp, DollarSign, Receipt, Calendar, Download } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import jsPDF from 'jspdf'
 
 interface ReportsViewProps {
   user: User
@@ -31,6 +32,8 @@ export default function ReportsView({ user }: ReportsViewProps) {
   })
   const [monthlyProfitData, setMonthlyProfitData] = useState<Array<{ month: string; profit: number }>>([])
   const [loading, setLoading] = useState(true)
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1) // 1-12
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
 
   useEffect(() => {
     loadReports()
@@ -125,6 +128,129 @@ export default function ReportsView({ user }: ReportsViewProps) {
     setLoading(false)
   }
 
+  async function generateMonthlySalesReport() {
+    try {
+      // Get start and end dates for selected month/year
+      const startDate = new Date(selectedYear, selectedMonth - 1, 1)
+      const endDate = new Date(selectedYear, selectedMonth, 0) // Last day of month
+      
+      const startDateStr = startDate.toISOString().split('T')[0]
+      const endDateStr = endDate.toISOString().split('T')[0]
+
+      // Fetch sales for the selected month - include profit and currency/rate for display
+      const { data: sales } = await supabase
+        .from('sales')
+        .select('chassis_no, sold_date, sold_price, sold_currency, rate_jpy_to_lkr, profit')
+        .gte('sold_date', startDateStr)
+        .lte('sold_date', endDateStr)
+        .order('sold_date', { ascending: true })
+
+      if (!sales || sales.length === 0) {
+        alert('No sales found for the selected month.')
+        return
+      }
+
+      // Fetch vehicles to get total cost (final_total_lkr)
+      const chassisNos = sales.map(s => s.chassis_no)
+      const { data: vehicles } = await supabase
+        .from('vehicles')
+        .select('chassis_no, final_total_lkr')
+        .in('chassis_no', chassisNos)
+
+      const vehiclesMap = new Map(vehicles?.map(v => [v.chassis_no, v]) || [])
+
+      // Prepare table data - use profit from sales table (calculated at sale time)
+      const tableData = sales.map(sale => {
+        const vehicle = vehiclesMap.get(sale.chassis_no)
+        const totalCost = vehicle?.final_total_lkr || 0
+        // Convert sold_price to LKR if it's in JPY for display
+        let soldPriceLkr = sale.sold_price || 0
+        if (sale.sold_currency === 'JPY' && sale.rate_jpy_to_lkr) {
+          soldPriceLkr = (sale.sold_price || 0) * sale.rate_jpy_to_lkr
+        }
+        // Use profit from sales table (already calculated with rate at time of sale)
+        const profit = sale.profit || 0
+        return {
+          date: sale.sold_date,
+          chassis: sale.chassis_no,
+          totalCost,
+          soldPrice: soldPriceLkr,
+          profit
+        }
+      })
+
+      // Calculate totals
+      const totalCostSum = tableData.reduce((sum, r) => sum + r.totalCost, 0)
+      const totalSoldSum = tableData.reduce((sum, r) => sum + r.soldPrice, 0)
+      const totalProfitSum = tableData.reduce((sum, r) => sum + r.profit, 0)
+
+      // Create PDF in landscape A4
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      })
+
+      // Title
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(18)
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                          'July', 'August', 'September', 'October', 'November', 'December']
+      const monthName = monthNames[selectedMonth - 1]
+      pdf.text(`MONTHLY SALES REPORT - ${monthName} ${selectedYear}`, 148, 20, { align: 'center' })
+
+      // Table headers
+      let currentY = 35
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(10)
+      pdf.text('Date', 20, currentY)
+      pdf.text('Chassis', 50, currentY)
+      pdf.text('Total Cost', 120, currentY, { align: 'right' })
+      pdf.text('Sold Price', 170, currentY, { align: 'right' })
+      pdf.text('Profit', 220, currentY, { align: 'right' })
+
+      // Draw header line
+      pdf.line(20, currentY + 3, 277, currentY + 3)
+      currentY += 8
+
+      // Table rows
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(9)
+      tableData.forEach(row => {
+        const date = new Date(row.date).toLocaleDateString()
+        pdf.text(date, 20, currentY)
+        pdf.text(row.chassis, 50, currentY)
+        pdf.text(formatCurrency(row.totalCost), 120, currentY, { align: 'right' })
+        pdf.text(formatCurrency(row.soldPrice), 170, currentY, { align: 'right' })
+        pdf.text(formatCurrency(row.profit), 220, currentY, { align: 'right' })
+        currentY += 6
+
+        // Add new page if needed
+        if (currentY > 190) {
+          pdf.addPage()
+          currentY = 20
+        }
+      })
+
+      // Total row
+      currentY += 3
+      pdf.line(20, currentY, 277, currentY)
+      currentY += 6
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(10)
+      pdf.text('TOTAL', 20, currentY)
+      pdf.text(formatCurrency(totalCostSum), 120, currentY, { align: 'right' })
+      pdf.text(formatCurrency(totalSoldSum), 170, currentY, { align: 'right' })
+      pdf.text(formatCurrency(totalProfitSum), 220, currentY, { align: 'right' })
+
+      // Save PDF
+      pdf.save(`Monthly-Sales-Report-${monthName}-${selectedYear}.pdf`)
+    } catch (error: any) {
+      console.error('Error generating monthly sales report:', error)
+      alert(`Error generating report: ${error.message}`)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -149,16 +275,16 @@ export default function ReportsView({ user }: ReportsViewProps) {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="card p-8 bg-gradient-to-br from-purple-500 to-pink-600 text-white"
+            className="card p-8 bg-slate-50 border-2 border-slate-800"
           >
             <div className="flex items-center gap-4 mb-4">
               <TrendingUp className="w-8 h-8" />
               <h2 className="text-2xl font-bold">Monthly Profit (Admin Only)</h2>
             </div>
-            <div className="text-4xl font-bold">
+            <div className="text-4xl font-bold text-slate-900">
               {formatCurrency(monthlyProfit)}
             </div>
-            <p className="text-purple-100 mt-2">Profit for current month</p>
+            <p className="text-slate-600 mt-2">Profit for current month</p>
           </motion.div>
 
           {monthlyProfitData.length > 0 && (
@@ -281,6 +407,71 @@ export default function ReportsView({ user }: ReportsViewProps) {
           </div>
         </motion.div>
       </div>
+
+      {/* Monthly Sales Report */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="card p-6"
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-3 bg-purple-100 rounded-lg">
+            <Calendar className="w-6 h-6 text-purple-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-slate-800">Monthly Sales Report</h3>
+        </div>
+        
+        <div className="flex items-center gap-4 mb-4">
+          <div>
+            <label className="label text-sm">Month</label>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+              className="input-field"
+            >
+              <option value="1">January</option>
+              <option value="2">February</option>
+              <option value="3">March</option>
+              <option value="4">April</option>
+              <option value="5">May</option>
+              <option value="6">June</option>
+              <option value="7">July</option>
+              <option value="8">August</option>
+              <option value="9">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="label text-sm">Year</label>
+            <input
+              type="number"
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value) || new Date().getFullYear())}
+              className="input-field"
+              min="2000"
+              max="2100"
+            />
+          </div>
+          
+          <div className="flex items-end">
+            <button
+              onClick={generateMonthlySalesReport}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Generate & Download PDF
+            </button>
+          </div>
+        </div>
+        
+        <p className="text-sm text-slate-600">
+          Generate a monthly sales report in table format (Date, Chassis, Total Cost, Sold Price, Profit) as a landscape A4 PDF.
+        </p>
+      </motion.div>
     </motion.div>
   )
 }
