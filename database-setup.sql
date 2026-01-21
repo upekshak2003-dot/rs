@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
   model TEXT NOT NULL,
   manufacturer_year INTEGER NOT NULL,
   mileage INTEGER NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('available', 'sold')),
+  status TEXT NOT NULL CHECK (status IN ('available', 'sold', 'not_available')),
   
   -- Japan costs (JPY)
   bid_jpy NUMERIC,
@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS vehicles (
   invoice_jpy_to_lkr_rate NUMERIC,
   undial_amount_jpy NUMERIC,
   undial_jpy_to_lkr_rate NUMERIC,
+
+  -- Undial transfer (optional)
+  undial_transfer_has_bank BOOLEAN,
+  undial_transfer_bank_name TEXT,
+  undial_transfer_acc_no TEXT,
+  undial_transfer_date DATE,
   
   -- Local costs (LKR)
   tax_lkr NUMERIC,

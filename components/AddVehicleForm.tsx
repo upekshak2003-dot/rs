@@ -233,6 +233,95 @@ export default function AddVehicleForm({ user }: AddVehicleFormProps) {
     }
   }
 
+  async function handleSaveNotAvailable() {
+    setLoading(true)
+    try {
+      // Validate required fields (step 1 only)
+      if (!chassisNo || !maker || !model || !manufacturerYear || !mileage) {
+        throw new Error('Please fill in all required vehicle details')
+      }
+
+      const yearNum = parseInt(manufacturerYear)
+      const mileageNum = parseInt(mileage)
+      if (isNaN(yearNum) || yearNum < 1900 || yearNum > 2100) {
+        throw new Error('Please enter a valid manufacturer year')
+      }
+      if (isNaN(mileageNum) || mileageNum < 0) {
+        throw new Error('Please enter a valid mileage')
+      }
+
+      // Check duplicates
+      const { data: existingVehicle } = await supabase
+        .from('vehicles')
+        .select('chassis_no, status')
+        .eq('chassis_no', chassisNo.trim())
+        .maybeSingle()
+
+      if (existingVehicle) {
+        alert(`Chassis already exists (${(existingVehicle as any).status || 'unknown'}).`)
+        return
+      }
+
+      const vehicleData: any = {
+        chassis_no: chassisNo.trim(),
+        maker: maker.trim(),
+        model: model.trim(),
+        manufacturer_year: yearNum,
+        mileage: mileageNum,
+        status: 'not_available',
+
+        engine_no: engineNo?.trim() || null,
+        engine_capacity: engineCapacity?.trim() || null,
+        // DB column is "colour" (not "color")
+        colour: colour?.trim() || null,
+        fuel_type: fuelType?.trim() || null,
+        seating_capacity: seatingCapacity?.trim() || null,
+
+        // Save any costs already entered (steps 2 & 3), rates can be filled later
+        bid_jpy: bidJpy ? parseFloat(bidJpy) : null,
+        commission_jpy: commissionJpy ? parseFloat(commissionJpy) : null,
+        insurance_jpy: insuranceJpy ? parseFloat(insuranceJpy) : null,
+        inland_transport_jpy: inlandTransportJpy ? parseFloat(inlandTransportJpy) : null,
+        other_jpy: otherCost1Jpy ? parseFloat(otherCost1Jpy) : null,
+        other_label: otherCost1Label?.trim() || null,
+        invoice_amount_jpy: invoiceAmountJpy ? parseFloat(invoiceAmountJpy) : null,
+        invoice_jpy_to_lkr_rate: null,
+        undial_amount_jpy: undialAmountJpy ? parseFloat(undialAmountJpy) : null,
+        undial_jpy_to_lkr_rate: null,
+
+        tax_lkr: null,
+        clearance_lkr: null,
+        transport_lkr: null,
+        local_extra1_label: null,
+        local_extra1_lkr: null,
+        local_extra2_label: null,
+        local_extra2_lkr: null,
+        local_extra3_label: null,
+        local_extra3_lkr: null,
+
+        // Some DB schemas enforce NOT NULL on totals/buy_price. For "not_available" we default to 0.
+        japan_total_lkr: 0,
+        final_total_lkr: 0,
+        buy_price: 0,
+        buy_currency: 'LKR',
+      }
+
+      const { error } = await supabase
+        .from('vehicles')
+        .insert(vehicleData)
+
+      if (error) throw error
+
+      alert('Saved to Not Available. You can complete costs later and move it to Available.')
+      router.push('/not-available')
+    } catch (error: any) {
+      console.error('Error saving not available vehicle:', error)
+      alert(`Error: ${error?.message || error}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   async function handleSellNow(japanTotalLkr: number) {
     if (!buyerName || !expectedProfitJpy) return
 
@@ -1074,6 +1163,15 @@ export default function AddVehicleForm({ user }: AddVehicleFormProps) {
 
             {currentStep < 4 ? (
               <div className="flex items-center gap-4">
+                {(currentStep === 1 || currentStep === 2 || currentStep === 3) && (
+                  <button
+                    onClick={handleSaveNotAvailable}
+                    disabled={loading || !canProceedToStep2()}
+                    className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? 'Saving...' : 'Add to Not Available'}
+                  </button>
+                )}
                 {currentStep === 2 && isAdmin(user) && calculateCIFTotal() > 0 && (
                   <button
                     onClick={async () => {

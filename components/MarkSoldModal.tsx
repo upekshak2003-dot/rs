@@ -291,11 +291,19 @@ export default function MarkSoldModal({
           sold_price: soldPriceNum,
           sold_currency: 'LKR',
           rate_jpy_to_lkr: null,
+          // Keep both legacy profit and new profit_lkr in sync
           profit: profitLkr,
+          profit_lkr: profitLkr,
           sold_date: soldDate,
+          // Keep legacy customer_* columns filled (for NOT NULL / existing reports)
           customer_name: customerName,
           customer_address: customerAddress || null,
           customer_phone: customerPhone || null,
+          // Map customer details to buyer_* columns on the sales table (new fields)
+          buyer_name: customerName,
+          buyer_address: customerAddress || null,
+          buyer_phone: customerPhone || null,
+          // Store customer ID as requested
           customer_id: customerId?.trim() || null,
         })
         .select()

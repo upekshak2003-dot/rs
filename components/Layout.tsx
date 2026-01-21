@@ -17,7 +17,8 @@ import {
   X,
   FileCheck,
   DollarSign,
-  Calculator
+  Calculator,
+  CarFront
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -59,6 +60,7 @@ export default function Layout({ children }: LayoutProps) {
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/add-vehicle', label: 'Add Vehicle', icon: PlusCircle },
     { href: '/available', label: 'Available Vehicles', icon: Car },
+    { href: '/not-available', label: 'Not Available', icon: CarFront },
     { href: '/generate-invoice', label: 'Generate Invoice', icon: FileCheck },
     { href: '/sold', label: 'Sold Vehicles', icon: CheckCircle },
     { href: '/lease', label: 'Lease', icon: Receipt },
@@ -189,8 +191,13 @@ function SidebarContent({
 
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
         {navItems.map((item) => {
-          // Hide "Add Vehicle" and "Tax" for staff
-          if ((item.href === '/add-vehicle' || item.href === '/tax') && !isAdmin(user)) {
+          // Hide "Add Vehicle", "Not Available" and "Tax" for staff (admin-only)
+          if (
+            (item.href === '/add-vehicle' ||
+              item.href === '/not-available' ||
+              item.href === '/tax') &&
+            !isAdmin(user)
+          ) {
             return null
           }
           

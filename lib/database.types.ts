@@ -1,4 +1,4 @@
-export type VehicleStatus = 'available' | 'sold'
+export type VehicleStatus = 'available' | 'sold' | 'not_available'
 
 export interface Vehicle {
   chassis_no: string
@@ -11,7 +11,9 @@ export interface Vehicle {
   // Vehicle description
   engine_no: string | null
   engine_capacity: string | null
-  color: string | null
+  // DB column is "colour" (historical). Some UI code may still reference "color".
+  colour?: string | null
+  color?: string | null
   fuel_type: string | null
   seating_capacity: string | null
   
@@ -28,6 +30,12 @@ export interface Vehicle {
   invoice_jpy_to_lkr_rate: number | null
   undial_amount_jpy: number | null
   undial_jpy_to_lkr_rate: number | null
+
+  // Undial transfer (optional)
+  undial_transfer_has_bank?: boolean | null
+  undial_transfer_bank_name?: string | null
+  undial_transfer_acc_no?: string | null
+  undial_transfer_date?: string | null
   
   // Local costs (LKR)
   tax_lkr: number | null

@@ -29,6 +29,7 @@ export default function AddAdvanceModal({
   const [customerId, setCustomerId] = useState('')
   const [sellingPrice, setSellingPrice] = useState('')
   const [todayAmount, setTodayAmount] = useState('')
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
   const [bankTransferred, setBankTransferred] = useState(false)
   const [bankAccNo, setBankAccNo] = useState('')
   const [bankTransferDate, setBankTransferDate] = useState(new Date().toISOString().split('T')[0])
@@ -102,6 +103,7 @@ export default function AddAdvanceModal({
 
     setAdvancePayments(payments || [])
     setTodayAmount('')
+    setPaymentDate(new Date().toISOString().split('T')[0])
   }
 
   function calculateTotalAdvance(): number {
@@ -175,7 +177,8 @@ export default function AddAdvanceModal({
         .from('advance_payments')
         .insert({
           chassis_no: vehicle.chassis_no,
-          paid_date: new Date().toISOString().split('T')[0],
+          // Use selected payment date instead of forcing today's date
+          paid_date: paymentDate,
           amount_lkr: parseFloat(todayAmount),
           bank_transferred: bankTransferred,
           bank_acc_no: bankTransferred ? bankAccNo?.trim() || null : null,
@@ -196,6 +199,7 @@ export default function AddAdvanceModal({
       setBankAccNo('')
       setBankTransferDate(new Date().toISOString().split('T')[0])
       setBankName('')
+      setPaymentDate(new Date().toISOString().split('T')[0])
 
       onSave()
       onClose()
@@ -383,7 +387,8 @@ export default function AddAdvanceModal({
         allPayments.push({
           id: 'today',
           chassis_no: vehicle.chassis_no,
-          paid_date: new Date().toISOString().split('T')[0],
+          // Use the selected payment date for today's payment in the receipt
+          paid_date: paymentDate,
           amount_lkr: parseFloat(todayAmount),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -600,18 +605,31 @@ export default function AddAdvanceModal({
                   </div>
                 )}
 
-                <div style={{ position: 'relative', zIndex: 10 }}>
-                  <label className="label">Today's Payment Amount (LKR) *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={todayAmount}
-                    onChange={(e) => setTodayAmount(e.target.value)}
-                    className="input-field"
-                    style={{ pointerEvents: 'auto', zIndex: 10, position: 'relative', cursor: 'text' }}
-                    placeholder="Enter amount"
-                    required
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div style={{ position: 'relative', zIndex: 10 }}>
+                    <label className="label">Payment Date *</label>
+                    <input
+                      type="date"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      className="input-field"
+                      style={{ pointerEvents: 'auto', zIndex: 10, position: 'relative', cursor: 'text' }}
+                      required
+                    />
+                  </div>
+                  <div style={{ position: 'relative', zIndex: 10 }}>
+                    <label className="label">Payment Amount (LKR) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={todayAmount}
+                      onChange={(e) => setTodayAmount(e.target.value)}
+                      className="input-field"
+                      style={{ pointerEvents: 'auto', zIndex: 10, position: 'relative', cursor: 'text' }}
+                      placeholder="Enter amount"
+                      required
+                    />
+                  </div>
                 </div>
 
                 {/* Bank Transfer Section */}
