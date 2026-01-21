@@ -408,70 +408,72 @@ export default function ReportsView({ user }: ReportsViewProps) {
         </motion.div>
       </div>
 
-      {/* Monthly Sales Report */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="card p-6"
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-3 bg-purple-100 rounded-lg">
-            <Calendar className="w-6 h-6 text-purple-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-slate-800">Monthly Sales Report</h3>
-        </div>
-        
-        <div className="flex items-center gap-4 mb-4">
-          <div>
-            <label className="label text-sm">Month</label>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-              className="input-field"
-            >
-              <option value="1">January</option>
-              <option value="2">February</option>
-              <option value="3">March</option>
-              <option value="4">April</option>
-              <option value="5">May</option>
-              <option value="6">June</option>
-              <option value="7">July</option>
-              <option value="8">August</option>
-              <option value="9">September</option>
-              <option value="10">October</option>
-              <option value="11">November</option>
-              <option value="12">December</option>
-            </select>
+      {/* Monthly Sales Report (Admin Only) */}
+      {isAdmin(user) && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="card p-6"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-3 bg-purple-100 rounded-lg">
+              <Calendar className="w-6 h-6 text-purple-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-800">Monthly Sales Report</h3>
           </div>
           
-          <div>
-            <label className="label text-sm">Year</label>
-            <input
-              type="number"
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value) || new Date().getFullYear())}
-              className="input-field"
-              min="2000"
-              max="2100"
-            />
+          <div className="flex items-center gap-4 mb-4">
+            <div>
+              <label className="label text-sm">Month</label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                className="input-field"
+              >
+                <option value="1">January</option>
+                <option value="2">February</option>
+                <option value="3">March</option>
+                <option value="4">April</option>
+                <option value="5">May</option>
+                <option value="6">June</option>
+                <option value="7">July</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="label text-sm">Year</label>
+              <input
+                type="number"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value) || new Date().getFullYear())}
+                className="input-field"
+                min="2000"
+                max="2100"
+              />
+            </div>
+            
+            <div className="flex items-end">
+              <button
+                onClick={generateMonthlySalesReport}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Generate & Download PDF
+              </button>
+            </div>
           </div>
           
-          <div className="flex items-end">
-            <button
-              onClick={generateMonthlySalesReport}
-              className="btn-primary flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Generate & Download PDF
-            </button>
-          </div>
-        </div>
-        
-        <p className="text-sm text-slate-600">
-          Generate a monthly sales report in table format (Date, Chassis, Total Cost, Sold Price, Profit) as a landscape A4 PDF.
-        </p>
-      </motion.div>
+          <p className="text-sm text-slate-600">
+            Generate a monthly sales report in table format (Date, Chassis, Total Cost, Sold Price, Profit) as a landscape A4 PDF.
+          </p>
+        </motion.div>
+      )}
     </motion.div>
   )
 }
