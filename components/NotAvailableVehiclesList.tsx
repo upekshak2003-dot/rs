@@ -334,7 +334,22 @@ export default function NotAvailableVehiclesList({ user }: NotAvailableVehiclesL
 
                 <div className="space-y-3">
                   <div className="font-semibold text-slate-800">CIF Split & Rates</div>
-                  <input className="input-field" placeholder="Invoice Amount (JPY)" value={edit.invoiceAmountJpy} onChange={(e) => setEdit({ ...edit, invoiceAmountJpy: e.target.value })} />
+                  <input 
+                    className="input-field" 
+                    placeholder="Invoice Amount (JPY)" 
+                    value={edit.invoiceAmountJpy} 
+                    onChange={(e) => {
+                      const newInvoiceAmount = e.target.value
+                      const cifTotal = calcCifTotal(edit)
+                      const invoiceAmountNum = parseFloat(newInvoiceAmount) || 0
+                      const autoUndial = cifTotal > 0 && invoiceAmountNum > 0 ? (cifTotal - invoiceAmountNum) : 0
+                      setEdit({ 
+                        ...edit, 
+                        invoiceAmountJpy: newInvoiceAmount,
+                        undialAmountJpy: autoUndial > 0 ? autoUndial.toString() : edit.undialAmountJpy
+                      })
+                    }} 
+                  />
                   <input
                     className="input-field"
                     placeholder="Invoice Rate (JPY→LKR)"
@@ -342,7 +357,12 @@ export default function NotAvailableVehiclesList({ user }: NotAvailableVehiclesL
                     onFocus={ensureInvoiceRateFilled}
                     onChange={(e) => setEdit({ ...edit, invoiceRate: e.target.value })}
                   />
-                  <input className="input-field" placeholder="Undial Amount (JPY)" value={edit.undialAmountJpy} onChange={(e) => setEdit({ ...edit, undialAmountJpy: e.target.value })} />
+                  <input 
+                    className="input-field" 
+                    placeholder="Undial Amount (JPY)" 
+                    value={edit.undialAmountJpy} 
+                    onChange={(e) => setEdit({ ...edit, undialAmountJpy: e.target.value })} 
+                  />
                   <input className="input-field" placeholder="Undial Rate (JPY→LKR)" value={edit.undialRate} onChange={(e) => setEdit({ ...edit, undialRate: e.target.value })} />
 
                   <div className="flex items-center gap-2 pt-2">

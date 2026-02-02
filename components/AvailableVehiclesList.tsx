@@ -91,6 +91,107 @@ export default function AvailableVehiclesList({ user }: AvailableVehiclesListPro
     return japanTotal + localTotal
   }
 
+  async function generateAllVehiclesChartPDF() {
+    try {
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      })
+
+      // Title
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(18)
+      pdf.text('Available Vehicles Chart', 105, 15, { align: 'center' })
+
+      // Table headers
+      pdf.setFontSize(11)
+      pdf.setFont('helvetica', 'bold')
+      let yPos = 25
+      const col1X = 15  // Chassis No
+      const col2X = 50  // Maker + Model
+      const col3X = 120 // Total Cost
+      
+      pdf.text('Chassis No', col1X, yPos)
+      pdf.text('Maker + Model', col2X, yPos)
+      pdf.text('Total Cost (LKR)', col3X, yPos)
+      
+      // Draw header line
+      yPos += 3
+      pdf.line(15, yPos, 190, yPos)
+      yPos += 5
+
+      // Table rows
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(10)
+      
+      const sortedVehicles = [...vehicles].sort((a, b) => {
+        const aTotal = calculateCombinedTotal(a)
+        const bTotal = calculateCombinedTotal(b)
+        return bTotal - aTotal // Sort by total cost descending
+      })
+
+      sortedVehicles.forEach((vehicle, index) => {
+        // Check if we need a new page
+        if (yPos > 270) {
+          pdf.addPage()
+          yPos = 20
+          
+          // Redraw headers on new page
+          pdf.setFont('helvetica', 'bold')
+          pdf.setFontSize(11)
+          pdf.text('Chassis No', col1X, yPos)
+          pdf.text('Maker + Model', col2X, yPos)
+          pdf.text('Total Cost (LKR)', col3X, yPos)
+          yPos += 3
+          pdf.line(15, yPos, 190, yPos)
+          yPos += 5
+          pdf.setFont('helvetica', 'normal')
+          pdf.setFontSize(10)
+        }
+
+        const chassisNo = vehicle.chassis_no.toString()
+        const makerModel = `${vehicle.maker} ${vehicle.model}`
+        const totalCost = calculateCombinedTotal(vehicle)
+
+        // Truncate if too long
+        const maxChassisWidth = 30
+        const maxMakerModelWidth = 60
+        let displayChassis = chassisNo
+        let displayMakerModel = makerModel
+
+        if (pdf.getTextWidth(displayChassis) > maxChassisWidth) {
+          displayChassis = displayChassis.substring(0, Math.min(15, displayChassis.length))
+        }
+        if (pdf.getTextWidth(displayMakerModel) > maxMakerModelWidth) {
+          displayMakerModel = displayMakerModel.substring(0, Math.min(40, displayMakerModel.length))
+        }
+
+        pdf.text(displayChassis, col1X, yPos)
+        pdf.text(displayMakerModel, col2X, yPos)
+        pdf.text(formatCurrency(totalCost), col3X, yPos)
+        
+        yPos += 7
+      })
+
+      // Footer with total count and sum
+      yPos += 5
+      pdf.line(15, yPos, 190, yPos)
+      yPos += 7
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(11)
+      const grandTotal = sortedVehicles.reduce((sum, v) => sum + calculateCombinedTotal(v), 0)
+      pdf.text(`Total Vehicles: ${sortedVehicles.length}`, col1X, yPos)
+      pdf.text(`Grand Total: ${formatCurrency(grandTotal)}`, col3X, yPos)
+
+      // Save PDF
+      pdf.save(`Available-Vehicles-Chart-${Date.now()}.pdf`)
+    } catch (error: any) {
+      console.error('Error generating vehicles chart:', error)
+      alert(`Error generating chart: ${error.message}`)
+    }
+  }
+
   async function generateCostBreakdownPDF(vehicle: Vehicle) {
     try {
       const pdf = new jsPDF({
@@ -291,6 +392,15 @@ export default function AvailableVehiclesList({ user }: AvailableVehiclesListPro
             <h1 className="text-3xl font-semibold text-slate-900 mb-1">Available Vehicles</h1>
             <p className="text-slate-600 text-sm">Manage vehicles currently in stock</p>
           </div>
+          {vehicles.length > 0 && (
+            <button
+              onClick={generateAllVehiclesChartPDF}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              <Printer className="w-4 h-4" />
+              Print All Vehicles
+            </button>
+          )}
         </div>
 
         {/* Search by Chassis */}

@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { LeaseCollection, Vehicle } from '@/lib/database.types'
 import { formatCurrency } from '@/lib/utils'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CheckCircle, Calendar, DollarSign, X } from 'lucide-react'
+import { CheckCircle, Calendar, DollarSign, X, FileText, Download } from 'lucide-react'
 import jsPDF from 'jspdf'
 
 export default function LeaseCollectionsList() {
@@ -136,8 +136,165 @@ export default function LeaseCollectionsList() {
     setShowModal(true)
   }
 
-  async function generateLeaseReport(collection: LeaseCollection & { vehicle: Vehicle }) {
+  async function generateAllPendingLeaseReport() {
     try {
+      // Get all pending (not collected) lease collections
+      const pendingCollections = collections.filter(c => !c.collected)
+
+      if (pendingCollections.length === 0) {
+        alert('No pending lease collections to print.')
+        return
+      }
+
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      })
+
+      // Title
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(18)
+      pdf.text('Pending Lease Collections Report', 105, 15, { align: 'center' })
+
+      // Table headers
+      pdf.setFontSize(11)
+      pdf.setFont('helvetica', 'bold')
+      let yPos = 25
+      const col1X = 15  // Chassis No
+      const col2X = 50  // Maker + Model
+      const col3X = 100 // Lease Company
+      const col4X = 130 // Due Amount
+      const col5X = 160 // Due Date
+      
+      pdf.text('Chassis No', col1X, yPos)
+      pdf.text('Maker + Model', col2X, yPos)
+      pdf.text('Lease Co.', col3X, yPos)
+      pdf.text('Due Amount', col4X, yPos)
+      pdf.text('Due Date', col5X, yPos)
+      
+      // Draw header line
+      yPos += 3
+      pdf.line(15, yPos, 190, yPos)
+      yPos += 5
+
+      // Table rows
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(9)
+      
+      // Sort by due date ascending
+      const sortedCollections = [...pendingCollections].sort((a, b) => {
+        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+      })
+
+      sortedCollections.forEach((collection) => {
+        // Check if we need a new page
+        if (yPos > 270) {
+          pdf.addPage()
+          yPos = 20
+          
+          // Redraw headers on new page
+          pdf.setFont('helvetica', 'bold')
+          pdf.setFontSize(11)
+          pdf.text('Chassis No', col1X, yPos)
+          pdf.text('Maker + Model', col2X, yPos)
+          pdf.text('Lease Co.', col3X, yPos)
+          pdf.text('Due Amount', col4X, yPos)
+          pdf.text('Due Date', col5X, yPos)
+          yPos += 3
+          pdf.line(15, yPos, 190, yPos)
+          yPos += 5
+          pdf.setFont('helvetica', 'normal')
+          pdf.setFontSize(9)
+        }
+
+        const chassisNo = collection.vehicle.chassis_no.toString()
+        const makerModel = `${collection.vehicle.maker} ${collection.vehicle.model}`
+        const leaseCompany = collection.lease_company || 'N/A'
+        const dueAmount = formatCurrency(collection.due_amount_lkr)
+        const dueDate = new Date(collection.due_date).toLocaleDateString()
+
+        // Truncate if too long
+        const maxChassisWidth = 30
+        const maxMakerModelWidth = 45
+        let displayChassis = chassisNo
+        let displayMakerModel = makerModel
+        let displayLeaseCompany = leaseCompany
+
+        if (pdf.getTextWidth(displayChassis) > maxChassisWidth) {
+          displayChassis = displayChassis.substring(0, Math.min(12, displayChassis.length))
+        }
+        if (pdf.getTextWidth(displayMakerModel) > maxMakerModelWidth) {
+          displayMakerModel = displayMakerModel.substring(0, Math.min(25, displayMakerModel.length))
+        }
+        if (pdf.getTextWidth(displayLeaseCompany) > 25) {
+          displayLeaseCompany = displayLeaseCompany.substring(0, Math.min(15, displayLeaseCompany.length))
+        }
+
+        pdf.text(displayChassis, col1X, yPos)
+        pdf.text(displayMakerModel, col2X, yPos)
+        pdf.text(displayLeaseCompany, col3X, yPos)
+        pdf.text(dueAmount, col4X, yPos)
+        pdf.text(dueDate, col5X, yPos)
+        
+        yPos += 6
+      })
+
+      // Footer with total count and sum
+      yPos += 5
+      pdf.line(15, yPos, 190, yPos)
+      yPos += 7
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(11)
+      const grandTotal = sortedCollections.reduce((sum, c) => sum + c.due_amount_lkr, 0)
+      pdf.text(`Total Pending Collections: ${sortedCollections.length}`, col1X, yPos)
+      pdf.text(`Grand Total: ${formatCurrency(grandTotal)}`, col4X, yPos)
+
+      // Save PDF
+      pdf.save(`Pending-Lease-Collections-Report-${Date.now()}.pdf`)
+    } catch (error: any) {
+      console.error('Error generating pending lease report:', error)
+      alert(`Error generating report: ${error.message}`)
+    }
+  }
+
+  async function generateLeaseReport(collection: LeaseCollection & { vehicle: Vehicle }, useSavedData: boolean = false) {
+    try {
+      // Load customer details if not already loaded
+      let reportCustomerName = customerName
+      let reportCustomerPhone = customerPhone
+      let reportCustomerAddress = customerAddress
+      
+      if (!reportCustomerName) {
+        await loadCustomerForCollection(collection.chassis_no)
+        reportCustomerName = customerName
+        reportCustomerPhone = customerPhone
+        reportCustomerAddress = customerAddress
+      }
+
+      // Use saved data from database if requested, otherwise use modal form fields
+      let reportChequeAmt = parseFloat(chequeAmount) || 0
+      let reportPersonalLoanAmt = parseFloat(personalLoanAmount) || 0
+      let reportChequeNo = chequeNo
+      let reportChequeDepositBankName = chequeDepositBankName
+      let reportChequeDepositBankAccNo = chequeDepositBankAccNo
+      let reportChequeDepositDate = chequeDepositDate
+      let reportPersonalLoanDepositBankName = personalLoanDepositBankName
+      let reportPersonalLoanDepositBankAccNo = personalLoanDepositBankAccNo
+      let reportPersonalLoanDepositDate = personalLoanDepositDate
+
+      if (useSavedData) {
+        reportChequeAmt = (collection as any).cheque_amount || 0
+        reportPersonalLoanAmt = (collection as any).personal_loan_amount || 0
+        reportChequeNo = (collection as any).cheque_no || ''
+        reportChequeDepositBankName = (collection as any).cheque_deposit_bank_name || ''
+        reportChequeDepositBankAccNo = (collection as any).cheque_deposit_bank_acc_no || ''
+        reportChequeDepositDate = (collection as any).cheque_deposit_date || ''
+        reportPersonalLoanDepositBankName = (collection as any).personal_loan_deposit_bank_name || ''
+        reportPersonalLoanDepositBankAccNo = (collection as any).personal_loan_deposit_bank_acc_no || ''
+        reportPersonalLoanDepositDate = (collection as any).personal_loan_deposit_date || ''
+      }
+
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -190,23 +347,20 @@ export default function LeaseCollectionsList() {
 
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(10)
-      pdf.text(`Name    : ${customerName || 'N/A'}`, 20, currentY)
+      pdf.text(`Name    : ${reportCustomerName || 'N/A'}`, 20, currentY)
       currentY += 5
-      pdf.text(`Phone   : ${customerPhone || 'N/A'}`, 20, currentY)
+      pdf.text(`Phone   : ${reportCustomerPhone || 'N/A'}`, 20, currentY)
       currentY += 5
-      pdf.text(`Address : ${customerAddress || 'N/A'}`, 20, currentY)
+      pdf.text(`Address : ${reportCustomerAddress || 'N/A'}`, 20, currentY)
       currentY += 10
 
       // Line
       pdf.line(20, currentY, 190, currentY)
       currentY += 8
 
-      // Collection / payment details typed in the modal
-      const chequeAmt = parseFloat(chequeAmount) || 0
-      const personalLoanAmt = parseFloat(personalLoanAmount) || 0
-      const totalCollected = chequeAmt + personalLoanAmt
-      const remaining =
-        (collection.due_amount_lkr || 0) - totalCollected
+      // Collection / payment details
+      const totalCollected = reportChequeAmt + reportPersonalLoanAmt
+      const remaining = (collection.due_amount_lkr || 0) - totalCollected
 
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(12)
@@ -215,45 +369,45 @@ export default function LeaseCollectionsList() {
 
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(10)
-      pdf.text(`Cheque Amount        : ${formatCurrency(chequeAmt)}`, 20, currentY)
+      pdf.text(`Cheque Amount        : ${formatCurrency(reportChequeAmt)}`, 20, currentY)
       currentY += 5
-      pdf.text(`Cheque No            : ${chequeNo || 'N/A'}`, 20, currentY)
+      pdf.text(`Cheque No            : ${reportChequeNo || 'N/A'}`, 20, currentY)
       currentY += 5
-      pdf.text(`Cheque Deposit Bank Name     : ${chequeDepositBankName || 'N/A'}`, 20, currentY)
+      pdf.text(`Cheque Deposit Bank Name     : ${reportChequeDepositBankName || 'N/A'}`, 20, currentY)
       currentY += 5
       pdf.text(
-        `Cheque Deposit Bank Acc No   : ${chequeDepositBankAccNo || 'N/A'}`,
+        `Cheque Deposit Bank Acc No   : ${reportChequeDepositBankAccNo || 'N/A'}`,
         20,
         currentY
       )
       currentY += 5
       pdf.text(
-        `Cheque Deposit Date  : ${chequeDepositDate || 'N/A'}`,
+        `Cheque Deposit Date  : ${reportChequeDepositDate || 'N/A'}`,
         20,
         currentY
       )
       currentY += 7
 
       pdf.text(
-        `Personal Loan Amount : ${formatCurrency(personalLoanAmt)}`,
+        `Personal Loan Amount : ${formatCurrency(reportPersonalLoanAmt)}`,
         20,
         currentY
       )
       currentY += 5
       pdf.text(
-        `PL Deposit Bank Name         : ${personalLoanDepositBankName || 'N/A'}`,
+        `PL Deposit Bank Name         : ${reportPersonalLoanDepositBankName || 'N/A'}`,
         20,
         currentY
       )
       currentY += 5
       pdf.text(
-        `PL Deposit Bank Acc No       : ${personalLoanDepositBankAccNo || 'N/A'}`,
+        `PL Deposit Bank Acc No       : ${reportPersonalLoanDepositBankAccNo || 'N/A'}`,
         20,
         currentY
       )
       currentY += 5
       pdf.text(
-        `PL Deposit Date      : ${personalLoanDepositDate || 'N/A'}`,
+        `PL Deposit Date      : ${reportPersonalLoanDepositDate || 'N/A'}`,
         20,
         currentY
       )
@@ -323,13 +477,22 @@ export default function LeaseCollectionsList() {
     const shouldMarkCollected = isFullyCollected && allDepositsFilled
 
     try {
-      // NOTE:
-      // To avoid type / schema mismatches (e.g. invalid input syntax for boolean/date),
-      // we only update the boolean collected flag here. The collected date is used
-      // for the printed report only and not persisted, so different database schemas
-      // (where collected_date might be a different type) will not cause errors.
+      // Update collection with all payment details
       const updateData: any = {
         collected: shouldMarkCollected,
+        cheque_amount: chequeAmt > 0 ? chequeAmt : null,
+        personal_loan_amount: personalLoanAmt > 0 ? personalLoanAmt : null,
+        cheque_no: chequeAmt > 0 ? chequeNo : null,
+        cheque_deposit_bank_name: chequeAmt > 0 ? (chequeDepositBankName || null) : null,
+        cheque_deposit_bank_acc_no: chequeAmt > 0 ? (chequeDepositBankAccNo || null) : null,
+        cheque_deposit_date: chequeAmt > 0 ? (chequeDepositDate || null) : null,
+        personal_loan_deposit_bank_name: personalLoanAmt > 0 ? (personalLoanDepositBankName || null) : null,
+        personal_loan_deposit_bank_acc_no: personalLoanAmt > 0 ? (personalLoanDepositBankAccNo || null) : null,
+        personal_loan_deposit_date: personalLoanAmt > 0 ? (personalLoanDepositDate || null) : null,
+      }
+      
+      if (shouldMarkCollected) {
+        updateData.collected_date = new Date().toISOString().split('T')[0]
       }
 
       const { error } = await supabase
@@ -346,7 +509,7 @@ export default function LeaseCollectionsList() {
       if (shouldMarkCollected) {
         const printReport = confirm('Print Lease Report?')
         if (printReport) {
-          await generateLeaseReport(selectedCollection)
+          await generateLeaseReport(selectedCollection, false)
         }
       }
 
@@ -373,9 +536,20 @@ export default function LeaseCollectionsList() {
         animate={{ opacity: 1, y: 0 }}
         className="space-y-6"
       >
-        <div>
-          <h1 className="text-3xl font-semibold text-slate-900 mb-1">Lease</h1>
-          <p className="text-slate-600 text-sm">Track pending lease payments</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold text-slate-900 mb-1">Lease</h1>
+            <p className="text-slate-600 text-sm">Track pending lease payments</p>
+          </div>
+          {collections.filter(c => !c.collected).length > 0 && (
+            <button
+              onClick={generateAllPendingLeaseReport}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              <Download className="w-4 h-4" />
+              Download Pending Report
+            </button>
+          )}
         </div>
 
         {collections.length === 0 ? (
@@ -462,13 +636,25 @@ export default function LeaseCollectionsList() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => openMarkCollectedModal(collection)}
-                      className="w-full mt-4 px-4 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      {isPartiallyCollected ? 'Update Collection' : 'Mark as Collected'}
-                    </button>
+                    <div className="flex gap-2 mt-4">
+                      <button
+                        onClick={async () => {
+                          await loadCustomerForCollection(collection.chassis_no)
+                          await generateLeaseReport(collection, true)
+                        }}
+                        className="flex-1 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+                      >
+                        <FileText className="w-4 h-4" />
+                        Download Report
+                      </button>
+                      <button
+                        onClick={() => openMarkCollectedModal(collection)}
+                        className="flex-1 px-4 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        {isPartiallyCollected ? 'Update Collection' : 'Mark as Collected'}
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               )
